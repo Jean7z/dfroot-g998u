@@ -24,8 +24,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Android SDK/NDK
-        uses: android-actions/setup-android@v3
+      - name: Android SDK sanity (runner ya trae SDK; aceptar licencias para auto-NDK de gradle)
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" | head -5
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" > /dev/null 2>&1 || true
 
       - name: Kernel oficial + LKM + APK
         env:
