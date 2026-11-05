@@ -17,7 +17,7 @@ MIRROR_URL="${MIRROR_URL:-https://github.com/yanzihan/android_kernel_samsung_sm8
 MIRROR_COMMIT="${MIRROR_COMMIT:-df919463cb7a3b1e6ee6d593efef1677e6000756}"  # 5.4.274 base
 MIRROR_BRANCH="${MIRROR_BRANCH:-}"                # optional branch fallback
 KSU_TAG="${KSU_TAG:-v3.2.5}"
-LSU_URL="${KSU_URL:-https://github.com/tiann/KernelSU.git}"
+KSU_URL="${KSU_URL:-https://github.com/tiann/KernelSU.git}"
 # Real device vermagic split:
 #   5.4.274-qgki-30957850-abG998USQSJHZB1
 #   = kernel.release(5.4.274) + CONFIG_LOCALVERSION("-qgki") + MAKE LOCALVERSION below
@@ -162,6 +162,9 @@ optional_names = set(re.findall(r'KSU_([A-Z0-9_]+)', optional))
 # map enum id -> name
 enum_ids = re.findall(r'\[KSU_([A-Z0-9_]+)\]\s*=\s*"([a-z_A-Z0-9]+)"', src)
 mapfile = os.environ.get("KSU_SYSTEM_MAP", "out/ci-prepare/System.map")
+if not os.path.exists(mapfile):
+    print("System.map no disponible tras modules_prepare (se genera en el enlace final); check diferido al modpost del build real")
+    raise SystemExit(0)
 have = set()
 for line in open(mapfile, errors="ignore"):
     p = line.split()
@@ -180,13 +183,15 @@ PY
 # ---------------------------------------------------------------- KernelSU LKM (kko)
 # ---------------------------------------------------------------- KernelSU LKM (kko)
 log "KernelSU LKM (kko) — build-kernelsu equivalente"
-KSUM="$REPO_ROOT/work/KernelSU-v3.2.5/kernel"
-if [ ! -d "$KSUM/.git" ]; then
-  mkdir -p "$(dirname "$KSUM")"
-  rm -rf "$KSUM.tmp"
-  git clone -q "$LSU_URL" "$KSUM.tmp" || { echo "ERROR: no se puede clonar KernelSU" >&2; exit 5; }
-  ( cd "$KSUM.tmp" && { git checkout -q "$KSU_TAG" 2>/dev/null || echo "  WARN: tag $KSU_TAG no existe, usando default branch"; } )
-  mv "$KSUM.tmp" "$KSUM"
+KSU_ROOT="$REPO_ROOT/work/KernelSU-v$KSU_TAG"
+KSUM="$KSU_ROOT/kernel"
+if [ ! -f "$KSUM/Makefile" ]; then
+  mkdir -p "$(dirname "$KSU_ROOT")"
+  rm -rf "$KSU_ROOT" "$KSU_ROOT.tmp"
+  git clone -q "$KSU_URL" "$KSU_ROOT.tmp" || { echo "ERROR: no se puede clonar KernelSU" >&2; exit 5; }
+  ( cd "$KSU_ROOT.tmp" && { git checkout -q "$KSU_TAG" 2>/dev/null || echo "  WARN: tag $KSU_TAG no existe, usando default branch" >&2; } )
+  [ -f "$KSU_ROOT.tmp/kernel/Makefile" ] || { echo "ERROR: kernel/Makefile ausente en KernelSU $KSU_TAG" >&2; exit 5; }
+  mv "$KSU_ROOT.tmp" "$KSU_ROOT"
 fi
 make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
   CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
