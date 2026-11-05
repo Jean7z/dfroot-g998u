@@ -1,21 +1,12 @@
 name: g998u-port-build
 # Track: https://github.com/Jean7z/dfroot-g998u/blob/g998u-port/g998u/PLAN.md
 #
-# Qué hace: prepara el árbol kernel p3q 5.4.274 (mirror o drop OSRC), aplica la
-# config real HZB1, construye kko (KernelSU LKM) + df_ko con vermagic exacto
-# 5.4.274-qgki-30957850-abG998USQSJHZB1 y empaqueta el APK debug.
-#
-# Disparo manual (workflow_dispatch) por seguridad: nada se ejecuta onload.
+# Árbol kernel: drop oficial Samsung OSRC HZB1 (Kernel.tar.gz, release asset 'osrc-hzb1'),
+# validado localmente contra la config real del device (5899/5906 opciones retenidas).
+# Vermagic objetivo: 5.4.274-qgki-30957850-abG998USQSJHZB1
 
 on:
-  workflow_dispatch:
-    inputs:
-      mirror_branch:
-        description: "Rama del mirror p3q si el SHA no es alcanzable"
-        default: ""
-      use_official_osrc:
-        description: "Drop OSRC ya subido vía gists/release (ruta alternativa)"
-        default: "false"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -27,14 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch master tree (mirror p3q 5.4.274 @ df91946 / o drop OSRC)
-        run: |
-          echo "Tree: mirror yanzihan/android_kernel_samsung_sm8350-p3q (fallback) o OSRC drop manual"
-          # Modo OSRC oficial: sube el zip a un artifact privado/release y注释 el paso mirror descomentando:
-          #   unzip SM-G998U_15_Opensource_*.zip → ./kernel-G998USQSJHZB1/
-          echo "READY"
-
-      - name: Toolchain Java (APK)
+      - name: Java (APK)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,9 +27,9 @@ jobs:
       - name: Android SDK/NDK
         uses: android-actions/setup-android@v3
 
-      - name: Kernel + LKM + APK
+      - name: Kernel oficial + LKM + APK
         env:
-          MIRROR_BRANCH: ${{ github.event.inputs.mirror_branch }}
+          KERNEL_TARBALL_URL: https://github.com/Jean7z/dfroot-g998u/releases/download/osrc-hzb1/Kernel.tar.gz
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: bash g998u/ci/build.sh
@@ -68,7 +52,6 @@ jobs:
           if-no-files-found: warn
 
 # Notas de riesgo (ver PLAN.md):
-# - Mirror CHN defconfig vs config US real: se inyecta nuestra config con olddefconfig;
-#   cualquier CONFIG/vendor Kconfig nuevo del drop oficial quedaría como default — checar WARN.
-# - symbol check aproxima desde System.map del árbol compilado, no el vmlinux del device real.
+# - config resuelta HZB1 (7522 entradas) retain 100% de vendor configs del árbol official.
+# - symbol check aproxima desde System.map del árbol compilado — el device real puede trimar algo más.
 # - NUNCA cargar los .ko en device fuera del foreground guard del exploit (panic/Odin).

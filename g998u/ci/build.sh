@@ -24,7 +24,7 @@ LSU_URL="${KSU_URL:-https://github.com/tiann/KernelSU.git}"
 MAKE_LOCALVERSION="${MAKE_LOCALVERSION:--30957850-abG998USQSJHZB1}"
 OUT="$REPO_ROOT/out/ci-prepare"
 TC="$REPO_ROOT/toolchains"
-CONFIG_SRC="$REPO_ROOT/g998u/kernel-config/g998u-hzb1.config"
+CONFIG_SRC="$REPO_ROOT/g998u/kernel-config/g998u-hzb1-resolved.config"   # resuelta (7522 líneas, olddefconfig-estable contra árbol OSRC HZB1)
 
 TC_CLANG_DIR="clang-r383902"     # repo scripts expect clang-r383902/bin
 CLANG_REFS=( "${CLANG_REF:-}" refs/heads/main refs/tags/android-13.0.0_r67 refs/tags/android-13.0.0_r1 )
@@ -85,42 +85,33 @@ export ANDROID_MAJOR_VERSION=r
 export SEC_BUILD_CONF_VENDOR_BUILD_OS=15
 
 # ---------------------------------------------------------------- kernel tree
-if [ -d "$REPO_ROOT/$KERNEL_TREE_NAME/Kernel" ]; then
-  KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME/Kernel"
-elif [ -d "$REPO_ROOT/$KERNEL_TREE_NAME" ] && [ -f "$REPO_ROOT/$KERNEL_TREE_NAME/Makefile" ]; then
+# Fuente oficial Samsung OSRC HZB1 (Kernel.tar.gz como release asset público).
+KERNEL_TARBALL_URL="${KERNEL_TARBALL_URL:-}"
+if [ -d "$REPO_ROOT/$KERNEL_TREE_NAME" ] && [ -f "$REPO_ROOT/$KERNEL_TREE_NAME/Makefile" ]; then
   KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME"
-elif [ -n "$KERNEL_TREE_SRC" ]; then
-  KERNEL_DIR="$(cd "$KERNEL_TREE_SRC" && pwd)"
+elif [ -n "$KERNEL_TARBALL_URL" ]; then
+  log "descargando árbol oficial OSRC (Kernel.tar.gz)"
+  mkdir -p "$REPO_ROOT/$KERNEL_TREE_NAME"
+  curl -fsSL --retry 2 "$KERNEL_TARBALL_URL" -o "$REPO_ROOT/.ci/kernel.tar.gz"
+  tar -xzf "$REPO_ROOT/.ci/kernel.tar.gz" -C "$REPO_ROOT/$KERNEL_TREE_NAME"
+  KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME"
 else
-  log "kernel tree desde mirror p3q p3q @ $MIRROR_COMMIT"
-  MIRROR="$REPO_ROOT/.ci/mirror-p3q"
-  mkdir -p .ci
-  if [ ! -d "$MIRROR/.git" ]; then
-    git clone "$MIRROR_URL" "$MIRROR"
-  fi
-  git -C "$MIRROR" checkout -q "$MIRROR_COMMIT" 2>/dev/null \
-    || { git -C "$MIRROR" fetch -q origin "$MIRROR_BRANCH:$MIRROR_COMMIT" 2>/dev/null || git -C "$MIRROR" fetch -q origin; git -C "$MIRROR" checkout -q "$MIRROR_COMMIT"; }
-  # base import sin KernelSU integrado (branch sixteen la integra built-in — NO sirve para LKM)
-  ln -sfn "$MIRROR" "$REPO_ROOT/$KERNEL_TREE_NAME"
-  KERNEL_DIR="$MIRROR"
+  echo "ERROR: sin KERNEL_TARBALL_URL ni árbol preextraído" >&2; exit 3
 fi
 [ -f "$KERNEL_DIR/Makefile" ] || { echo "ERROR: árbol kernel sin Makefile: $KERNEL_DIR" >&2; exit 3; }
 
-KL_VER=$(python3 - <<'PY'
-import re
-mk=open("Makefile").read()
+KL_VER=$(python3 -c "
+import re,sys
+mk=open(sys.argv[1]).read()
 def g(p):
-    m=re.search(rf"^{p} *= *(\d+)$",mk,re.M); return m.group(1)
-print(f"{g('VERSION')}.{g('PATCHLEVEL')}.{g('SUBLEVEL')}")
-PY
-)
+    m=re.search(rf'^{p} *= *(\d+)$',mk,re.M); return m.group(1)
+print(f\"{g('VERSION')}.{g('PATCHLEVEL')}.{g('SUBLEVEL')}\")
+" "$KERNEL_DIR/Makefile")
 echo "kernel tree: VERSION $KL_VER (device real: 5.4.274)"
 [ "$KL_VER" = "5.4.274" ] || echo "  WARN: sublevel distinto del device — verificar parches extra antes de insmod"
 
 # ---------------------------------------------------------------- config
-log "config: nuestra config HZB1 real + olddefconfig"
-# AUTO=y (git describe del mirror) rompería el vermagic → forzar off
-sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' "$CONFIG_SRC"
+log "config: resolved HZB1 (olddefconfig ya validada contra este árbol)"
 cp "$CONFIG_SRC" "$OUT/.config"
 make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
   CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
@@ -147,33 +138,49 @@ else
   echo "  WARN vermagic difiere del objetivo ($EXPECTED) — el insmod en device fallaría; revisar LOCALVERSION/AUTO"
 fi
 
-# ---------------------------------------------------------------- symbol check (78 del resolver)
+# ---------------------------------------------------------------- symbol check (resolver)
 log "check de símbolos del resolver contra System.map generado"
 python3 - <<'PY' || true
-import re,sys
-src=open("kernel-ksu/infra/symbol_resolver.h").read()
-# enum KSU_NSYMS de nombres: extrae identificadores después de NITEM(...)
-pat=re.compile(r'\bX\s*\(\s*(?:KSU_SYM_)?[A-Za-z0-9_]*,\s*([A-Za-z_]\w*)')
-names=set(re.findall(r'X\("([A-Za-z_]\w*)',src)) | set(re.findall(r'\bX\(\s*KSU_SYM_\w+,\s*"?\s*([A-Za-z_]\w*)"?',src))
-if not names:
-    names=set(re.findall(r'\"([A-Za-z_]\w*)\"',src))
-mapfile="out/ci-prepare/System.map"
-have=set()
-for line in open(mapfile,errors="ignore"):
-    p=line.split()
-    if len(p)>=3: have.add(p[-1])
-missing=sorted(n for n in names if n not in have)
-print(f"symbols requeridos ~{len(names)}; missing {len(missing)}")
-if missing: print("MISSING:", "\n".join(missing))
+import re, os
+src = open("kernel-ksu/infra/symbol_resolver.c").read()
+names = re.findall(r'\[KSU_[A-Z0-9_]+\]\s*=\s*"([a-z_A-Z0-9]+)"', src)
+lines = src.splitlines()
+for i, l in enumerate(lines):
+    if re.match(r'\s*\[KSU_[A-Z0-9_]+\]\s*$', l) and i + 1 < len(lines):
+        m = re.match(r'^\s*"([a-z_A-Z0-9]+)"', lines[i + 1])
+        if m:
+            names.append(m.group(1))
+names = sorted(set(names))
+optional = str(src[src.find("static const int optional[]"):src.find("};", src.find("static const int optional[]"))])
+optional_names = set(re.findall(r'KSU_([A-Z0-9_]+)', optional))
+# map enum id -> name
+enum_ids = re.findall(r'\[KSU_([A-Z0-9_]+)\]\s*=\s*"([a-z_A-Z0-9]+)"', src)
+mapfile = os.environ.get("KSU_SYSTEM_MAP", "out/ci-prepare/System.map")
+have = set()
+for line in open(mapfile, errors="ignore"):
+    p = line.split()
+    if len(p) >= 3:
+        have.add(p[-1])
+missing_core, missing_opt = [], []
+for eid, name in enum_ids:
+    (missing_core, missing_opt) = (missing_core, missing_opt + [f"{name} (opcional: KSU_{eid})"]) if f"KSU_{eid}" in optional_names else (missing_core + [name], missing_opt)
+print(f"symbols del resolver: {len(enum_ids)}; core missing: {len(missing_core)}; optional missing: {len(missing_opt)}")
+if missing_core:
+    print("CORE MISSING (abortan el insmod):", ",".join(missing_core))
+if missing_opt:
+    print("OPTIONAL MISSING (degradan con warning):", ",".join(missing_opt))
 PY
 
 # ---------------------------------------------------------------- KernelSU LKM (kko)
+# ---------------------------------------------------------------- KernelSU LKM (kko)
 log "KernelSU LKM (kko) — build-kernelsu equivalente"
 KSUM="$REPO_ROOT/work/KernelSU-v3.2.5/kernel"
-if [ ! -d "$KSUM" ]; then mkdir -p "$(dirname "$KSUM")"
-  git clone -q "$LSU_URL" "$KSUM" \
-    && { git -C "$KSUM" checkout -q "$KSU_TAG" 2>/dev/null || echo "  WARN: tag $KSU_TAG no existe, usando default branch"; } \
-    || { git -C "$KSUM" checkout -q "work/KernelSU-v3.2.5" 2>/dev/null || rm -rf "$KSUM"; }
+if [ ! -d "$KSUM/.git" ]; then
+  mkdir -p "$(dirname "$KSUM")"
+  rm -rf "$KSUM.tmp"
+  git clone -q "$LSU_URL" "$KSUM.tmp" || { echo "ERROR: no se puede clonar KernelSU" >&2; exit 5; }
+  ( cd "$KSUM.tmp" && { git checkout -q "$KSU_TAG" 2>/dev/null || echo "  WARN: tag $KSU_TAG no existe, usando default branch"; } )
+  mv "$KSUM.tmp" "$KSUM"
 fi
 make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
   CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
@@ -197,10 +204,22 @@ else
 fi
 
 # ---------------------------------------------------------------- dfmod (df_self / dirtyfrag 5.4)
-log "dfmod: df_self (dirtyfrag ko) para HZB1"
+log "dfmod: df_self (dirtyfrag ko embebido) para HZB1"
 if [ -f "dfmod/Makefile" ]; then
-  make -C dfmod O="$OUT" || true
-  for k in dfmod/*.ko; do [ -e "$k" ] && cp "$k" "app/src/main/jni/ko/dirtyfrag-android15-5.4.ko" && echo "df_ko → app/src/main/jni/ko/dirtyfrag-android15-5.4.ko"; done
+  make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+    CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
+    CROSS_COMPILE="$GCC_A64_BIN/aarch64-linux-android-" \
+    CROSS_COMPILE_COMPAT="$GCC_ARM_BIN/arm-linux-androideabi-" \
+    CLANG_TRIPLE=aarch64-linux-gnu- \
+    LOCALVERSION="$MAKE_LOCALVERSION" \
+    M="$REPO_ROOT/dfmod" src="$REPO_ROOT/dfmod" modules
+  # el embebido en exp.c {15,5,4} es df_self (df_stager NO es parte de la cadena)
+  if [ -f dfmod/df_self.ko ]; then
+    cp dfmod/df_self.ko "app/src/main/jni/ko/dirtyfrag-android15-5.4.ko"
+    echo "df_ko → app/src/main/jni/ko/dirtyfrag-android15-5.4.ko ($(stat -c%s dfmod/df_self.ko) bytes)"
+  else
+    echo "  WARN: df_self.ko no generado — queda el G991B embebido en el APK" >&2
+  fi
 else
   echo "  WARN: dfmod sin Makefile — el df_ko se reconstruye fuera de CI (ver PLAN §3); queda el G991B dentro del APK"
 fi
