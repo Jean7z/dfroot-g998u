@@ -64,7 +64,7 @@ if [ -z "$GCC_A64_BIN" ]; then
   log "gcc-4.9 aarch64 (cross) — fallback apt: symlinks aarch64-linux-gnu-* con prefix android"
   if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then sudo apt-get -y install gcc-aarch64-linux-gnu >/dev/null; fi
   mkdir -p "$TC/aarch64-linux-android-4.9/bin"
-  for t in gcc ld ar nm objcopy ranlib strip readelf gcc-ar; do
+  for t in gcc ld ar nm objcopy ranlib strip readelf gcc-ar as elfedit; do
     c=$(command -v "aarch64-linux-gnu-$t" 2>/dev/null || true)
     [ -n "$c" ] && ln -sf "$c" "$TC/aarch64-linux-android-4.9/bin/aarch64-linux-android-$t"
   done
@@ -74,9 +74,9 @@ GCC_A64_BIN=$(ls -d "$TC"/aarch64-linux-android-4.9*/bin 2>/dev/null | head -1 |
 GCC_ARM_BIN=$(ls -d "$TC"/arm-linux-androideabi-4.9*/bin 2>/dev/null | head -1 || true)
 if [ -z "$GCC_ARM_BIN" ]; then
   log "gcc arm32 compat — apt gcc-arm-linux-gnueabihf con prefix androideabi"
-  if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then sudo apt-get -y install gcc-arm-linux-gnueabihf >/dev/null; fi
+  if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then sudo apt-get -y install gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf >/dev/null; fi
   mkdir -p "$TC/arm-linux-androideabi-4.9/bin"
-  for t in gcc ld ar nm objcopy ranlib strip readelf; do
+  for t in gcc ld ar nm objcopy ranlib strip readelf as elfedit; do
     c=$(command -v "arm-linux-gnueabihf-$t" 2>/dev/null || true)
     [ -n "$c" ] && ln -sf "$c" "$TC/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-$t"
   done
