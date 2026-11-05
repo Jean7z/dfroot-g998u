@@ -51,11 +51,23 @@ Config exacta extraída con adb: [`g998u/kernel-config/g998u-hzb1.config`](kerne
 
 ## Fuente del kernel p3q HZB1
 
-- **Oficial (defconfig US incluida):** `opensource.samsung.com/uploadSearch?searchValue=G998`
+- **Oficial (única vía cierta — ver hallazgo abajo):** `opensource.samsung.com/uploadSearch?searchValue=G998`
   → fila SM-G998U Android 15 (uploadId 14026) → Source → zip
   `SM-G998U_15_Opensource_G998USQSJHZAA_..._G998USQSJHZB1.zip` (~500–900 MB; requiere browser por CSRF/captcha).
-- **Fallback CI:** mirror público `yanzihan/android_kernel_samsung_sm8350-p3q` (clone directo, sin captcha)
-  + nuestra `g998u-hzb1.config` real vía `olddefconfig` (riesgo documentado: símbolos vendor Kconfig nuevos).
+- **Mirror yanzihan (`df91946`) DESCARTADO para build.** Verifico local (olddefconfig 2026-11-05):
+  su Kconfig produce solo 2363 entradas (defconfig vendor CHN incl.) vs 5906 del device HZB1 —
+  le falta gran parte del vendor tree (MEMCG, NET stack, SELinux, drivers Samsung...).
+  Un LKM compilado contra ese árbol tendría struct-layout divergente = insmod inestable/inviable.
+  Útil solo como referencia de lectura (kdp.c, DEFEX, hooks).
+
+### Checks de símbolos resueltos localmente (contra mirror, 2026-11-05)
+
+- 76 símbolos del resolver: presentes los críticos; `__arm64_sys_setns`/`__tracepoint_sys_enter` son
+  generados por macros de build (falso MISSING); `inc/dec_rlimit_ucounts` solo se resuelven en ≥5.11
+  (device 5.4 → nunca); `kdp_usecount_dec_and_test` opcional (fork ya tolera su ausencia).
+- KDP críticos `prepare_ro_creds` y `kdp_assign_pgd`: **presentes** en `drivers/fastuh/kdp.c` del p3q.
+- Pendiente con vmlinux HZB1 real: offsets DEFEX `+0x3ed/+0x3f6`, layout `selinux_publish_54`,
+  presencia exacta del set completo en kallsyms (CI lo valida con System.map).
 
 ## Entorno de compilación
 
