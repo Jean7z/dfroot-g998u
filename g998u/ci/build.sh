@@ -97,7 +97,7 @@ if [ -d "$REPO_ROOT/$KERNEL_TREE_NAME" ] && [ -f "$REPO_ROOT/$KERNEL_TREE_NAME/M
   KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME"
 elif [ -n "$KERNEL_TARBALL_URL" ]; then
   log "descargando árbol oficial OSRC (Kernel.tar.gz)"
-  mkdir -p "$REPO_ROOT/$KERNEL_TREE_NAME"
+  mkdir -p "$REPO_ROOT/.ci" "$REPO_ROOT/$KERNEL_TREE_NAME"
   curl -fsSL --retry 2 "$KERNEL_TARBALL_URL" -o "$REPO_ROOT/.ci/kernel.tar.gz"
   tar -xzf "$REPO_ROOT/.ci/kernel.tar.gz" -C "$REPO_ROOT/$KERNEL_TREE_NAME"
   KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME"
