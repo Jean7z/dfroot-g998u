@@ -42,11 +42,18 @@ Config exacta extraída con adb: [`g998u/kernel-config/g998u-hzb1.config`](kerne
    `LOCALVERSION=-30957850-abG998USQSJHZB1`
 2. **Rebuild de 2 .ko + APK**: `kernel-ksu` → `kko`; `dfmod` → `dirtyfrag-android15-5.4.ko`
    (se re-encrustan con `.incbin`, vermagic exacto obligatorio).
-3. **Validación RE contra vmlinux HZB1** (una vez por firmware):
-   - 78 símbolos del enum del resolvedor (`kernel-ksu/infra/symbol_resolver.h`) — `tools/check_symbol.c` lo automatiza
-   - layout `selinuxfs` (`kernel-ksu/compat/selinux_publish_54.c`, capturado de HZC2)
-   - offsets DEFEX `+0x3ed`/`+0x3f6` y tamaños dpolicy (`kernel-ksu/compat/samsung_defex.c`)
-4. **Candidatos `vendor_file`** Qualcomm con ≥8 KB libres (`app/src/main/java/df/root/ExploitRunner.java:136-142`)
+3. **Validación RE contra vmlinux HZB1** (una vez por firmware) — **RESUELTAS 2026-11-06 contra el fuente del drop OSRC**:
+   - DEFEX: la semántica de `task_defex_user_exec`/`rules_lookup` (`nonzero == allow`, return temprano
+     cuando `!check_rules_ready`) es idéntica a la explotada por el kretprobe del fork;
+     `packed_rules_secondary` (.bss pointer, usada solo para paths is_system) existe tal cual —
+     el bypass onChange y la dpolicy-injection son válidos sin cambios. Los offsets "+0x3ed/+0x3f6"
+     del comentario son estructuras de verificación, no ABI de runtime (el handler solo reescribe
+     `regs[0]=1`).
+   - selinuxfs: `struct selinux_fs_info` del `security/selinux/selinuxfs.c` del HZB1 es idéntica
+     campo a campo a `ksu_selinux_fs_info_54` del fork (capturada del HZC2) → layout confirmed sin cambios.
+   - (formal, CI): 76 símbolos del resolver contra `System.map` del árbol compilado.
+4. **Candidatos `vendor_file`** Qualcomm con ≥8 KB libres (`ExploitRunner.java:136-142`) — pendiente
+   verificación adb (los genéricos `libstagefright_flacdec.so`/`libbinderdebug.so` casi seguro existen en QC)
 5. Cosmético: título UI (`MainActivity.java:77`)
 
 ## Fuente del kernel p3q HZB1
