@@ -42,38 +42,44 @@ sudo apt-get -y install bc bison flex libncurses5-dev libssl-dev cpio python3 gi
 # ---------------------------------------------------------------- toolchains
 CLANG_BIN=$(ls -d "$TC"/clang-r383902*/bin 2>/dev/null | head -1 || true)
 if [ -z "$CLANG_BIN" ]; then
-  log "clang r383902b1"
+  log "clang r383902 (mirror GitHub — device usa r383902b1/clang-11; ThinLTO+CFI requieren clang-11 de la misma línea)"
   HAVE_CLANG=0
-  for ref in "${CLANG_REFS[@]}"; do
-    [ -z "$ref" ] && continue
-    url="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${ref}/${TC_CLANG_DIR}.tar.gz"
-    if curl -fsSL --retry 2 "$url" -o "$TC/clang.tgz"; then mkdir -p "$TC/$TC_CLANG_DIR"; tar -xzf "$TC/clang.tgz" -C "$TC/$TC_CLANG_DIR"; HAVE_CLANG=1; break; fi
-    echo "  no disponible en $ref (intento siguiente)"
+  for mirror in \
+    "codeload.github.com/AOSP-10/prebuilts_clang_host_linux-x86_clang-r383902/tar.gz/refs/heads/10" \
+    "codeload.github.com/david7xwshenanigans/clang-r383902/tar.gz/refs/heads/clang-r383902" ; do
+    if curl -fsSL --retry 2 "https://$mirror" -o "$TC/clang-mirror.tgz"; then
+      mkdir -p "$TC/clang-mirror-ex"
+      tar -xzf "$TC/clang-mirror.tgz" -C "$TC/clang-mirror-ex" && \
+      d=$(find "$TC/clang-mirror-ex" -maxdepth 2 -name bin -type d | head -1) && \
+      [ -n "$d" ] && mv "$(dirname "$d")" "$TC/clang-r383902" && HAVE_CLANG=1 && break
+    fi
+    echo "  mirror no disponible: $mirror"
   done
-  [ "$HAVE_CLANG" = 1 ] || { echo "ERROR: clang r383902b1 no descargado; exporta CLANG_REF con un ref válido" >&2; exit 2; }
-  CLANG_BIN="$TC/$TC_CLANG_DIR/bin"
+  [ "$HAVE_CLANG" = 1 ] || { echo "ERROR: clang r383902 no descargado (mirrors caídos)" >&2; exit 2; }
+  CLANG_BIN="$TC/clang-r383902/bin"
 fi
 
 GCC_A64_BIN=$(ls -d "$TC"/aarch64-linux-android-4.9*/bin 2>/dev/null | head -1 || true)
 if [ -z "$GCC_A64_BIN" ]; then
-  log "gcc-4.9 aarch64 (cross)"
-  mkdir -p "$TC/aarch64-linux-android-4.9"
-  curl -fsSL --retry 2 "$GCC_A64_URL" -o "$TC/gcc64.tgz" \
-    && tar -xzf "$TC/gcc64.tgz" -C "$TC/aarch64-linux-android-4.9" \
-    || { echo "  WARN: +archive falló; fallback apt gcc-aarch64-linux-gnu" >&2;
-         sudo apt-get -y install gcc-aarch64-linux-gnu >/dev/null;
-         mkdir -p "$TC/apt-a64"; ln -sf "$(command -v aarch64-linux-gnu-gcc -h 2>/dev/null || echo /usr/bin/aarch64-linux-gnu-gcc)" "$TC/apt-a64/aarch64-linux-android-gcc" || true;
-         GCC_A64_BIN="/usr/bin"; }
+  log "gcc-4.9 aarch64 (cross) — fallback apt: symlinks aarch64-linux-gnu-* con prefix android"
+  if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then sudo apt-get -y install gcc-aarch64-linux-gnu >/dev/null; fi
+  mkdir -p "$TC/aarch64-linux-android-4.9/bin"
+  for t in gcc ld ar nm objcopy ranlib strip readelf gcc-ar; do
+    c=$(command -v "aarch64-linux-gnu-$t" 2>/dev/null || true)
+    [ -n "$c" ] && ln -sf "$c" "$TC/aarch64-linux-android-4.9/bin/aarch64-linux-android-$t"
+  done
 fi
 GCC_A64_BIN=$(ls -d "$TC"/aarch64-linux-android-4.9*/bin 2>/dev/null | head -1 || echo /usr/bin)
 
 GCC_ARM_BIN=$(ls -d "$TC"/arm-linux-androideabi-4.9*/bin 2>/dev/null | head -1 || true)
 if [ -z "$GCC_ARM_BIN" ]; then
-  log "gcc-4.9 arm (cross compat)"
-  mkdir -p "$TC/arm-linux-androideabi-4.9"
-  curl -fsSL --retry 2 "$GCC_ARM_URL" -o "$TC/gcc32.tgz" \
-    && tar -xzf "$TC/gcc32.tgz" -C "$TC/arm-linux-androideabi-4.9" || \
-    echo "  WARN: +archive falló; se usa el binhost simplemente para vdso/compat si aplica" >&2
+  log "gcc arm32 compat — apt gcc-arm-linux-gnueabihf con prefix androideabi"
+  if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then sudo apt-get -y install gcc-arm-linux-gnueabihf >/dev/null; fi
+  mkdir -p "$TC/arm-linux-androideabi-4.9/bin"
+  for t in gcc ld ar nm objcopy ranlib strip readelf; do
+    c=$(command -v "arm-linux-gnueabihf-$t" 2>/dev/null || true)
+    [ -n "$c" ] && ln -sf "$c" "$TC/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-$t"
+  done
 fi
 GCC_ARM_BIN=$(ls -d "$TC"/arm-linux-androideabi-4.9*/bin 2>/dev/null | head -1 || echo /usr/bin)
 
