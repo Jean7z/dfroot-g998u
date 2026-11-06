@@ -120,8 +120,9 @@ echo "kernel tree: VERSION $KL_VER (device real: 5.4.274)"
 
 # ---------------------------------------------------------------- config + prepare + vmlinux (cacheable)
 CACHED=0
-if [ -f "$OUT/Module.symvers" ] && [ -f "$OUT/System.map" ] && [ -f "$OUT/.config" ]; then
-  log "CACHE HIT: Module.symvers + System.map + .config de out/ci-prepare → salto olddefconfig/prepare/vmlinux"
+if [ -f "$OUT/Module.symvers" ] && [ -f "$OUT/System.map" ] && [ -f "$OUT/.config" ] && \
+   [ -f "$OUT/include/config/kernel.release" ] && [ -d "$OUT/scripts" ]; then
+  log "CACHE HIT: prepare mini de out/ci-prepare → salto olddefconfig/prepare/vmlinux"
   CACHED=1
 fi
 if [ "$CACHED" = 0 ]; then
