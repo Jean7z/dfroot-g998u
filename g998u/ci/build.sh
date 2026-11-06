@@ -101,6 +101,8 @@ elif [ -n "$KERNEL_TARBALL_URL" ]; then
   curl -fsSL --retry 2 "$KERNEL_TARBALL_URL" -o "$REPO_ROOT/.ci/kernel.tar.gz"
   tar -xzf "$REPO_ROOT/.ci/kernel.tar.gz" -C "$REPO_ROOT/$KERNEL_TREE_NAME"
   KERNEL_DIR="$REPO_ROOT/$KERNEL_TREE_NAME"
+  # mtimes fijos antiguos: el árbol fresco no debe invalidar el build cacheado de out/
+  find "$KERNEL_DIR" -type f -exec touch -t 200001010000 {} + 2>/dev/null
 else
   echo "ERROR: sin KERNEL_TARBALL_URL ni árbol preextraído" >&2; exit 3
 fi
@@ -116,7 +118,13 @@ print(f\"{g('VERSION')}.{g('PATCHLEVEL')}.{g('SUBLEVEL')}\")
 echo "kernel tree: VERSION $KL_VER (device real: 5.4.274)"
 [ "$KL_VER" = "5.4.274" ] || echo "  WARN: sublevel distinto del device — verificar parches extra antes de insmod"
 
-# ---------------------------------------------------------------- config
+# ---------------------------------------------------------------- config + prepare + vmlinux (cacheable)
+CACHED=0
+if [ -f "$OUT/Module.symvers" ] && [ -f "$OUT/System.map" ] && [ -f "$OUT/.config" ]; then
+  log "CACHE HIT: Module.symvers + System.map + .config de out/ci-prepare → salto olddefconfig/prepare/vmlinux"
+  CACHED=1
+fi
+if [ "$CACHED" = 0 ]; then
 log "config: resolved HZB1 (olddefconfig ya validada contra este árbol)"
 cp "$CONFIG_SRC" "$OUT/.config"
 make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
@@ -156,6 +164,7 @@ if grep -q "^CONFIG_MODVERSIONS=y" "$OUT/.config"; then
     LOCALVERSION="$MAKE_LOCALVERSION" \
     -j"$(nproc)" vmlinux || { echo "ERROR: build de vmlinux falló (auditado: árbol ≡ firmware)" >&2; exit 6; }
 fi
+fi  # CACHED=0
 
 # ---------------------------------------------------------------- symbol check (resolver)
 log "check de símbolos del resolver contra System.map generado"

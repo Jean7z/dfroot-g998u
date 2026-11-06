@@ -31,6 +31,15 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" > /dev/null 2>&1 || true
 
+      - name: Cache toolchains + build out/
+        uses: actions/cache@v4
+        with:
+          path: |
+            toolchains/
+            out/ci-prepare
+          key: v998u-${{ runner.os }}-${{ hashFiles('g998u/kernel-config/g998u-hzb1-resolved.config') }}
+          restore-keys: v998u-${{ runner.os }}-
+          # skip-cache si corres fresh
       - name: Kernel oficial + LKM + APK
         env:
           KERNEL_TARBALL_URL: https://github.com/Jean7z/dfroot-g998u/releases/download/osrc-hzb1/Kernel.tar.gz
