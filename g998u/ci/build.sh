@@ -214,6 +214,8 @@ make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
 KOCKO=$(find "$OUT" "$KKSU" -name '*.ko' -newer "$OUT/.config" 2>/dev/null | head -1 || true)
 [ -n "$KOCKO" ] || KOCKO=$(find "$OUT" "$KKSU" -name 'kernelsu*.ko' -o -name 'kko*.ko' 2>/dev/null | head -1 || true)
 if [ -n "${KOCKO:-}" ]; then
+  LLVM_STRIP=$(find "$(dirname "$CLANG_BIN")" -name 'llvm-strip' 2>/dev/null | head -1 || true)
+  [ -n "$LLVM_STRIP" ] && "$LLVM_STRIP" --strip-unneeded "$KOCKO" && echo "  kko strip: $(stat -c%s "$KOCKO") bytes"
   cp "$KOCKO" "$REPO_ROOT/app/src/main/assets/kko"
   echo "kko → $REPO_ROOT/app/src/main/assets/kko ($(stat -c%s "$KOCKO") bytes)"
 else
@@ -232,6 +234,9 @@ if [ -f "dfmod/Makefile" ]; then
     M="$REPO_ROOT/dfmod" src="$REPO_ROOT/dfmod" modules
   # el embebido en exp.c {15,5,4} es df_self (df_stager NO es parte de la cadena)
   if [ -f dfmod/df_self.ko ]; then
+    LLVM_STRIP=$(find "$(dirname "$CLANG_BIN")" -name 'llvm-strip' 2>/dev/null | head -1 || true)
+    [ -n "$LLVM_STRIP" ] && "$LLVM_STRIP" --strip-unneeded dfmod/df_self.ko && \
+      echo "  strip: $(stat -c%s dfmod/df_self.ko) bytes (relocs intactos)"
     cp dfmod/df_self.ko "app/src/main/jni/ko/dirtyfrag-android15-5.4.ko"
     echo "df_ko → app/src/main/jni/ko/dirtyfrag-android15-5.4.ko ($(stat -c%s dfmod/df_self.ko) bytes)"
   else
