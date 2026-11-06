@@ -183,6 +183,7 @@ for line in open(mapfile, errors="ignore"):
     p = line.split()
     if len(p) >= 3:
         have.add(p[-1])
+print(f"System.map: {len(have)} nombres leídos (primeras líneas: {open(mapfile, errors='ignore').readline()[:60]!r})")
 missing_core, missing_opt = [], []
 for eid, name in enum_ids:
     (missing_core, missing_opt) = (missing_core, missing_opt + [f"{name} (opcional: KSU_{eid})"]) if f"KSU_{eid}" in optional_names else (missing_core + [name], missing_opt)
@@ -244,7 +245,13 @@ fi
 log "APK (gradle assembleDebug, re-empaqueta los assets)"
 ./gradlew :app:assembleDebug --no-daemon
 
-MIX="app/build/outputs/apk/debug/app-debug.apk"
-[ -f "$MIX" ] && cp "$MIX" ./dirtyfrag-g998u-debug.apk && echo "APK → ./dirtyfrag-g998u-debug.apk"
+MIX=$(find app/build -name '*.apk' -type f 2>/dev/null | head -1)
+if [ -n "${MIX:-}" ]; then
+  cp "$MIX" ./dirtyfrag-g998u-debug.apk && echo "APK → ./dirtyfrag-g998u-debug.apk (desde $MIX)"
+else
+  echo "ERROR: gradle no produjo .apk — revisar app/build outputs:" >&2
+  find app/build -name '*.apk*' 2>/dev/null >&2 || true
+  exit 7
+fi
 
 log "FIN CI-build — artifacts: kko, dirtyfrag .ko, APK. VERMAGIC $RELEASE"
