@@ -144,6 +144,19 @@ else
   echo "  WARN vermagic difiere del objetivo ($EXPECTED) — el insmod en device fallaría; revisar LOCALVERSION/AUTO"
 fi
 
+# MODVERSIONS=y → los CRC de los símbolos importados por los LKM vienen del
+# Module.symvers que se genera al compilar el vmlinux (y de paso System.map).
+if grep -q "^CONFIG_MODVERSIONS=y" "$OUT/.config"; then
+  log "vmlinux -j$(nproc) — genera Module.symvers (CRCs MODVERSIONS) + System.map"
+  make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+    CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
+    CROSS_COMPILE="$GCC_A64_BIN/aarch64-linux-android-" \
+    CROSS_COMPILE_COMPAT="$GCC_ARM_BIN/arm-linux-androideabi-" \
+    CLANG_TRIPLE=aarch64-linux-gnu- \
+    LOCALVERSION="$MAKE_LOCALVERSION" \
+    -j"$(nproc)" vmlinux || { echo "ERROR: build de vmlinux falló (auditado: árbol ≡ firmware)" >&2; exit 6; }
+fi
+
 # ---------------------------------------------------------------- symbol check (resolver)
 log "check de símbolos del resolver contra System.map generado"
 python3 - <<'PY' || true
@@ -182,31 +195,23 @@ PY
 
 # ---------------------------------------------------------------- KernelSU LKM (kko)
 # ---------------------------------------------------------------- KernelSU LKM (kko)
-log "KernelSU LKM (kko) — build-kernelsu equivalente"
-KSU_ROOT="$REPO_ROOT/work/KernelSU-v$KSU_TAG"
-KSUM="$KSU_ROOT/kernel"
-if [ ! -f "$KSUM/Makefile" ]; then
-  mkdir -p "$(dirname "$KSU_ROOT")"
-  rm -rf "$KSU_ROOT" "$KSU_ROOT.tmp"
-  git clone -q "$KSU_URL" "$KSU_ROOT.tmp" || { echo "ERROR: no se puede clonar KernelSU" >&2; exit 5; }
-  ( cd "$KSU_ROOT.tmp" && { git checkout -q "$KSU_TAG" 2>/dev/null || echo "  WARN: tag $KSU_TAG no existe, usando default branch" >&2; } )
-  [ -f "$KSU_ROOT.tmp/kernel/Makefile" ] || { echo "ERROR: kernel/Makefile ausente en KernelSU $KSU_TAG" >&2; exit 5; }
-  mv "$KSU_ROOT.tmp" "$KSU_ROOT"
-fi
+log "KernelSU LKM (kko) — árbol vendido kernel-ksu (patcheado para 5.4 + samsung)"
+KKSU="$REPO_ROOT/kernel-ksu"
+[ -f "$KKSU/Kbuild" ] || { echo "ERROR: kernel-ksu/Kbuild ausente" >&2; exit 5; }
 make -C "$KERNEL_DIR" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
   CC="$CLANG_BIN/clang" LD="$CLANG_BIN/ld.lld" \
   CROSS_COMPILE="$GCC_A64_BIN/aarch64-linux-android-" \
   CROSS_COMPILE_COMPAT="$GCC_ARM_BIN/arm-linux-androideabi-" \
   CLANG_TRIPLE=aarch64-linux-gnu- \
   LOCALVERSION="$MAKE_LOCALVERSION" \
-  M="$KSUM" src="$KSUM" \
+  M="$KKSU" src="$KKSU" \
   CONFIG_KSU=m CONFIG_KSU_S21_54=y \
   CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y \
   CONFIG_KSU_SAMSUNG_DEFEX=y CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y \
   modules
 
-KOCKO=$(find "$OUT" "$KSUM" -name '*.ko' -newer "$OUT/.config" 2>/dev/null | head -1 || true)
-[ -n "$KOCKO" ] || KOCKO=$(find "$OUT" "$KSUM" -name 'kko*.ko' -o -name 'KernelSU*.ko' 2>/dev/null | head -1 || true)
+KOCKO=$(find "$OUT" "$KKSU" -name '*.ko' -newer "$OUT/.config" 2>/dev/null | head -1 || true)
+[ -n "$KOCKO" ] || KOCKO=$(find "$OUT" "$KKSU" -name 'kernelsu*.ko' -o -name 'kko*.ko' 2>/dev/null | head -1 || true)
 if [ -n "${KOCKO:-}" ]; then
   cp "$KOCKO" "$REPO_ROOT/app/src/main/assets/kko"
   echo "kko → $REPO_ROOT/app/src/main/assets/kko ($(stat -c%s "$KOCKO") bytes)"
