@@ -80,6 +80,8 @@ adb shell /data/adb/ksu/bin/su -c 'dmesg | grep -iE "dfroot|kernelsu|zygisk|vect
 
 The app's output should include `DFROOT_KSU_LIVE=1`, `DFROOT_POSTFSDATA_RC=0`, `DFROOT_SERVICES_RC=0`, `DFROOT_DAEMONS_READY=1` and `DFROOT_FRAMEWORK_RESTART_SCHEDULED` on a successful path. If daemon readiness fails, the code skips the framework restart and reports the failure.
 
+`DFROOT_DAEMONS_READY=1` is not a complete Zygisk health check: current code waits for `vectord` and `controller` only when the matching Vector/COPG module directories exist and are enabled. It does not directly verify Zygisk Next or test injection into a selected app. Confirm Zygisk Next in KernelSU and Vector's own framework status after the restart.
+
 ## Troubleshooting notes
 
 - If Vector says the framework is inactive, check that Zygisk Next is enabled in KernelSU, its module is not disabled, Vector's module is installed/enabled, and the app is not excluded by a KernelSU unmount/denylist setting. Then reactivate DFRoot using the sequence above.
@@ -96,4 +98,4 @@ The app's output should include `DFROOT_KSU_LIVE=1`, `DFROOT_POSTFSDATA_RC=0`, `
 - `app/src/main/java/df/root/BootReceiver.java`: posts the boot notification; actual exploit and load run through the visible activity.
 - `app/src/main/assets/mrun.sh`: module mounts, install operations and lifecycle helpers.
 
-This runbook describes the current branch implementation. Upstream module instructions and behavior can change; use the linked official docs for version-specific requirements.
+This runbook describes the current branch implementation (last checked 2026-11-07). Upstream module instructions and behavior can change; use the linked official docs for version-specific requirements.
