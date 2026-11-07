@@ -3,7 +3,6 @@ name: g998u-app-build
 on:
   workflow_dispatch:
   push:
-    branches: [master]
     paths:
       - 'app/**'
       - 'gradle/**'
