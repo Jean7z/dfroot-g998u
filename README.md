@@ -25,7 +25,9 @@ porting (addresses, vermagic) — nothing here is drop-in for other builds.
   hooks. Samsung KDP/RKP/DEFEX/CFI-safe (tracepoint + task_work only, no text patch).
 - **`mrun.sh`** (device: `/data/adb/ksu/mrun.sh`): Magisk-style module runner —
   file-bind + dir-mirror mounts, CA staging, zygote/app-ns injection with verify,
-  `/system_ext/bin` su+busybox mirror for bare-`su` in every shell.
+  `/system_ext/bin` su+busybox mirror for bare-`su` in every shell. During root
+  activation, real KernelSU `post-fs-data` and `service` stages run once; `mrun`
+  handles the port-specific mounts without duplicating those scripts.
 - **`ksudshim.sh`**: manager-compatible `ksud` CLI over mrun (install/enable/
   disable/uninstall/action). `feature save` and friends are stubs (no daemon).
 - **Manager** (`manager/`, versionCode 32601): release build,
@@ -50,11 +52,19 @@ porting (addresses, vermagic) — nothing here is drop-in for other builds.
 ## Flow
 
 Manual: open the app → **Launch Root** (exploit, window stays open) →
-**Load KernelSU** when rooted → mounts + services.
+**Load KernelSU** when rooted. DFRoot then runs KernelSU's module stages,
+performs its port-specific mounts, starts module services, waits for Vector/COPG
+when installed, and restarts the Android framework so Zygisk can inject into the
+new Zygote and `system_server`.
 
-Autoboot: reboot → tap the DFRoot notification (let it open full-screen)
-→ window stays on → exploit → 2s settle → load KernelSU automatically.
-Same result, no taps. Background load never happens (panic/Odin guard).
+Autoboot: enable **START AT BOOT** in DFRoot, reboot, and let the boot activity
+run in the foreground. It runs the exploit and the same KernelSU/module startup
+flow. The root remains ephemeral; the exploit must run again after a full reboot.
+Background load never happens (panic/Odin guard).
+
+For app-only changes, use the `g998u-app-build` GitHub Actions workflow. The
+`g998u-build` workflow also builds the kernel LKM and is only needed when those
+kernel artifacts change.
 
 ```sh
 ./build.sh
@@ -63,5 +73,7 @@ adb install -r dirtyfrag.apk
 
 ## Known issues / limits
 
-- No Zygisk (LSPosed etc. install but never inject).(It may work after the latest updates, should be tested.)
+- Zygisk Next, Vector, and COPG are optional modules and are not bundled in the
+  DFRoot APK. Install them before activating KernelSU; DFRoot then initializes
+  their KernelSU stages and restarts the Android framework.
 - No `overlayfs` tricks anywhere near `/system` (hardlockup → watchdog reset).

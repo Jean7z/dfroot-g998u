@@ -431,8 +431,12 @@ case "$1" in
                 kill "$ADBD" 2>/dev/null
             fi
         fi
-        each_module post-fs-data.sh
-        wait
+        if [ "${DFROOT_KSUD_POSTFSDATA:-0}" = "1" ]; then
+            log "post-fs-data already handled by KernelSU"
+        else
+            each_module post-fs-data.sh
+            wait
+        fi
         inject_apex_cacerts
         # dogrulama: beklenen bind'ler gercekten tuttu mu?
         # (LMK baskisinda sessiz olumler oluyor; gorunur kil)
