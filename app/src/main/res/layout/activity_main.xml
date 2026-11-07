@@ -18,8 +18,8 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:title="DFRoot for S21"
-            app:subtitle="(@diabl0w  github/xda)"
+            android:title="DFRoot · S21 Ultra"
+            app:subtitle="SM-G998U · HZB1 · Android 15"
             app:subtitleTextAppearance="@style/TextAppearance.Material3.LabelSmall" />
 
     </com.google.android.material.appbar.AppBarLayout>

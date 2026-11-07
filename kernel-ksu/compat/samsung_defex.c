@@ -740,7 +740,7 @@ int ksu_samsung_defex_init(void)
      * write paths proven blocked on HZC2: direct store panics (9600004e),
      * linear alias also RO, set_memory_rw refuses (-22), fixmap helpers
      * unexported, own-PTE flip halts the CPU (RKP-g-guarded pagetables).
-     * Write must come from the exploit side (see df_stager) or via a
+     * Write must come from the exploit side (see DirtyFrag second-stage) or via a
      * DEFEX rule injection. This block only reports. */
     {
         unsigned long addr = find_kernel_symbol_exact("boot_state_unlocked");

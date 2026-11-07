@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# mrun: ksud-less module runner for o1s/HZC2.
+# mrun: KernelSU module lifecycle helper for the G998U/HZB1 port.
 # Kullanim: sh mrun.sh {mounts|services|mount-one <id>|install <zip>|
 #   install-dir <dir> [zip]|unmount|unmount-one <id>|enable|disable <id>|
 #   uninstall <id>|hint|boot}
@@ -42,7 +42,6 @@ peel_mount() {
         timeout 5 umount "$t" 2>/dev/null || break
     done
     timeout 5 umount -l "$t" 2>/dev/null
-    ZPIDS=""
     ZPIDS=""
     for d in /proc/[0-9]*; do
         pid=${d#/proc/}

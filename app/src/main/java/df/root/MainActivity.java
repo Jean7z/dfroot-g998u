@@ -68,24 +68,12 @@ public class MainActivity extends AppCompatActivity implements IReporter {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
-        // Baslik koddan (layout onbelleklerine karsi garanti):
-        // "DFRoot for S21" + baz firmware kucuk puntoyla.
         if (getSupportActionBar() != null) {
-            android.text.SpannableStringBuilder sb =
-                    new android.text.SpannableStringBuilder("DFRoot for S21  ");
-            int start = sb.length();
-            sb.append("(G991BXXSJHZC2)");
-            sb.setSpan(new android.text.style.RelativeSizeSpan(0.6f),
-                    start, sb.length(),
-                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.ITALIC),
-                    start, sb.length(),
-                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            getSupportActionBar().setTitle(sb);
-            getSupportActionBar().setSubtitle("(@diabl0w github/xda)");
+            getSupportActionBar().setTitle("DFRoot · S21 Ultra");
+            getSupportActionBar().setSubtitle("SM-G998U · HZB1 · Android 15");
         }
 
-        // o1s: same-boot reruns allowed (worker unlinks stale
+        // G998U: same-boot reruns are allowed (worker unlinks stale
         // markers at start and re-arms atomically). Never gate on /dev/df.
         binding.btnRun.setEnabled(true);
 

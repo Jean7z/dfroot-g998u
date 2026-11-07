@@ -2,7 +2,7 @@
  * execve()s this binary directly: no second clone exists to hang).
  *
  * Why this shape: every post-hook clone/fork risks hanging D-state in
- * copy_process under o1s reclaim storms (proven: sud-clone hangs some
+ * copy_process under G998U reclaim pressure (proven: sud-clone hangs some
  * boots while grandchild-clone flies). This design has ZERO forks on
  * the critical path: hook -> worker -> grandchild (ko) -> worker execs
  * sud -> sud serves. Per-client shells still fork+exec+waitpid, but that

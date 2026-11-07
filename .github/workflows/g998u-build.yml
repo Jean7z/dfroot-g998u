@@ -1,12 +1,15 @@
-name: g998u-port-build
-# Track: https://github.com/Jean7z/dfroot-g998u/blob/g998u-port/g998u/PLAN.md
-#
-# Árbol kernel: drop oficial Samsung OSRC HZB1 (Kernel.tar.gz, release asset 'osrc-hzb1'),
-# validado localmente contra la config real del device (5899/5906 opciones retenidas).
-# Vermagic objetivo: 5.4.274-qgki-30957850-abG998USQSJHZB1
+name: G998U kernel build
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths:
+      - 'g998u/kernel-config/**'
+      - 'g998u/ci/build.sh'
+      - 'kernel-ksu/**'
+      - 'dfmod/**'
+      - '.github/workflows/g998u-build.yml'
 
 permissions:
   contents: read
@@ -18,20 +21,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Java (APK)
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Android SDK sanity (runner ya trae SDK; aceptar licencias para auto-NDK de gradle)
+      - name: Prepare Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME" | head -5
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" > /dev/null 2>&1 || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.22.1" >/dev/null 2>&1 || true
 
-      - name: Cache toolchains + prepare de out/ (mini: skip vmlinux)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: g998u-gradle-${{ runner.os }}-${{ hashFiles('app/build.gradle.kts', 'gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: g998u-gradle-${{ runner.os }}-
+
+      - name: Cache kernel toolchains and prepared tree
         uses: actions/cache@v4
         with:
           path: |
@@ -42,33 +52,36 @@ jobs:
             out/ci-prepare/include/config/
             out/ci-prepare/include/generated/
             out/ci-prepare/scripts/
-          key: v998u-${{ runner.os }}-${{ hashFiles('g998u/kernel-config/g998u-hzb1-resolved.config') }}
-          restore-keys: v998u-${{ runner.os }}-
-      - name: Kernel oficial + LKM + APK
+            out/ci-prepare/arch/
+            out/ci-prepare/security/
+          key: g998u-kernel-osrc-hzb1-${{ runner.os }}-${{ hashFiles('g998u/kernel-config/g998u-hzb1-resolved.config') }}
+
+      - name: Build target kernel payloads and APK
         env:
           KERNEL_TARBALL_URL: https://github.com/Jean7z/dfroot-g998u/releases/download/osrc-hzb1/Kernel.tar.gz
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: bash g998u/ci/build.sh
 
-      - name: Sanidad del vermagic + símbolos (resumen)
+      - name: Verify target artifacts
         run: |
-          echo "kernel.release esperado: 5.4.274-qgki-30957850-abG998USQSJHZB1"
-          ls -l app/src/main/assets/kko app/src/main/jni/ko/dirtyfrag-android15-5.4.ko dirtyfrag-g998u-debug.apk || true
+          expected='5.4.274-qgki-30957850-abG998USQSJHZB1'
+          test -s app/src/main/assets/kko
+          test -s app/src/main/jni/ko/dirtyfrag-android15-5.4.ko
+          test -s dirtyfrag-g998u-debug.apk
+          test -s out/ci-prepare/Module.symvers
+          test -s out/ci-prepare/System.map
+          strings app/src/main/assets/kko | grep -F "$expected"
+          strings app/src/main/jni/ko/dirtyfrag-android15-5.4.ko | grep -F "$expected"
 
-      - name: Artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: g998u-hzb1-build
+          name: dfroot-g998u-hzb1
           path: |
             app/src/main/assets/kko
             app/src/main/jni/ko/dirtyfrag-android15-5.4.ko
             dirtyfrag-g998u-debug.apk
             out/ci-prepare/Module.symvers
             out/ci-prepare/System.map
-          if-no-files-found: warn
-
-# Notas de riesgo (ver PLAN.md):
-# - config resuelta HZB1 (7522 entradas) retain 100% de vendor configs del árbol official.
-# - symbol check aproxima desde System.map del árbol compilado — el device real puede trimar algo más.
-# - NUNCA cargar los .ko en device fuera del foreground guard del exploit (panic/Odin).
+          if-no-files-found: error

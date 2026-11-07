@@ -54,17 +54,13 @@ struct ksu_lookup_symbol_ctx {
     void *match;
 };
 
-/* Bootstrap scanner (df_self-proven on HZC2): kallsyms_lookup_name is NOT
- * exported, so resolve it by scanning for "kallsyms_lookup_name+0x0/"
- * via sprint_symbol (GPL-exported). noinline: keeps the call-result
- * cast shape at every user. Pass 1 is a device-agnostic fixed-base sweep;
- * pass 2 is the old per-build neighborhood fallback. */
+/* Bootstrap scanner: kallsyms_lookup_name is not exported, so resolve it
+ * by scanning for "kallsyms_lookup_name+0x0/" via sprint_symbol.
+ * noinline keeps the call-result cast shape at every user. The fixed-base
+ * scan is shared with the G998U port; no legacy device-address fallback. */
 extern int sprint_symbol(char *buffer, unsigned long address);
 
 #define SCAN_KLN_TEXT_BASE	0xffffffc010000000UL
-#define SCAN_KLN_FILE	0xffffffc0102f860cUL
-#define SCAN_KLN_DOWN	(1UL << 20)
-#define SCAN_KLN_UP	(16UL << 20)
 static unsigned long ksu_scan_kln_addr;
 
 static int ksu_name_is(const char *buf, const char *want)
@@ -84,7 +80,7 @@ static int ksu_name_is(const char *buf, const char *want)
  * in core, no .cfi_jt): the central validator rejects their raw addresses
  * no matter how exact the type is (RCNT 154: register_kprobe). Unchecked
  * jump executes normally (df_self precedent). Addresses never taken by the
- * kernel (direct KSU-internal calls only). Prototypes verbatim from HZC2
+ * kernel (direct KSU-internal calls only). Prototypes follow the Samsung 5.4
  * headers (kprobes.h). */
 __nocfi int ksu_b_avc_has_perm(struct selinux_state *state, u32 ssid,
 				 u32 tsid, u16 tclass, u32 requested,
@@ -138,10 +134,8 @@ noinline static unsigned long ksu_scan_kln(void)
 	if (ksu_scan_kln_addr)
 		return ksu_scan_kln_addr;
 	found = 0;
-	/* Pass 1 (device-agnostic): sweep the kernel text range from the
-	 * fixed base, same style as df_self v2 (proven across HZC2 boots,
-	 * deltas ~4-4.4MB). sprint_symbol reads the kallsyms table only,
-	 * so there is no way to fault. */
+	/* Sweep the fixed Samsung 5.4 kernel text range used by the G998U
+	 * second-stage module. */
 	for (a = SCAN_KLN_TEXT_BASE;
 	     a < SCAN_KLN_TEXT_BASE + (64UL << 20); a += 4) {
 		for (j = 0; j < sizeof(sbuf); j++)
@@ -152,20 +146,7 @@ noinline static unsigned long ksu_scan_kln(void)
 			break;
 		}
 	}
-	/* Pass 2 (fallback): old per-build neighborhood scan. Only needed
-	 * if the fixed-base sweep missed (unusual text base). */
-	if (!found) {
-		for (a = SCAN_KLN_FILE - SCAN_KLN_DOWN;
-		     a < SCAN_KLN_FILE + SCAN_KLN_UP; a += 4) {
-			for (j = 0; j < sizeof(sbuf); j++)
-				sbuf[j] = 0;
-			sprint_symbol(sbuf, a);
-			if (ksu_name_is(sbuf, "kallsyms_lookup_name")) {
-				found = a;
-				break;
-			}
-		}
-	}
+
 	if (found) {
 		ksu_scan_kln_addr = found;
 		pr_info("ksu: kln scan hit %lx (text-base %lx, delta %ld)\n",
@@ -290,7 +271,7 @@ unsigned long __nocfi find_kernel_symbol_exact(const char *symbol_name)
 #endif
     char *module_name = NULL;
     char buf[KSYM_SYMBOL_LEN];
-    /* Bootstrap: kallsyms_lookup_name is NOT exported on HZC2 — resolve
+    /* Bootstrap: kallsyms_lookup_name is not exported on this target — resolve
      * it via scan, call through a local (inline shape). */
     unsigned long (*kln)(const char *) =
 	    (unsigned long (*)(const char *))ksu_scan_kln();

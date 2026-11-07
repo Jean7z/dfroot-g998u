@@ -1,79 +1,54 @@
-# DFRoot for S21 (SM-G991B, G991BXXSJHZC2)
+# DFRoot for Samsung Galaxy S21 Ultra (SM-G998U)
 
-Ephemeral root for Samsung S21 (locked bootloader) via DirtyFrag (CVE-2026-43284),
-plus a working KernelSU stack. Based on [diabl0w/DFRoot](https://github.com/diabl0w/DFRoot)
-(`@diabl0w github/xda`); S21 port and everything below by the fork.
+DFRoot provides an ephemeral root session for the US Snapdragon Galaxy S21 Ultra on firmware **G998USQSJHZB1**. It combines the DirtyFrag exploit path with a Samsung 5.4 KernelSU LKM. The kernel and exploit payloads are device and firmware specific.
 
-<img src="docs/ss.jpeg" width="270" alt="KernelSU working">
+## Supported target
 
-Target kernel: `5.4.242-30958140-abG991BXXSJHZC2` (Samsung o1s, Android 15).
-This is a **non-GKI** vendor kernel: no GKI symbols/ABI, trimmed kallsyms,
-CFI + PAC + RKP + DEFEX enforced. The LKM therefore resolves everything at
-runtime (custom symbol resolver), uses tracepoint + task_work instead of
-kprobes/text-patch, and never touches read-only tables. Expect per-firmware
-porting (addresses, vermagic) — nothing here is drop-in for other builds.
+| Property | Target |
+| --- | --- |
+| Device | Samsung Galaxy S21 Ultra, SM-G998U (`p3q`, Snapdragon 888) |
+| Firmware | G998USQSJHZB1, Android 15 / One UI 7 |
+| Kernel release | `5.4.274-qgki-30957850-abG998USQSJHZB1` |
+| Bootloader | Locked |
 
-> [!WARNING]
-> No responsibility for damage. Reboot wipes root (LKM, no persistence).
+Do not use these payloads on the Galaxy S21 SM-G991B or another G998U firmware without rebuilding and validating against that exact kernel. A full reboot removes root; the exploit must be run again.
 
-## What was built on top
+## Runtime flow
 
-- **Exploit → `sud` daemon** (`dfmod/sud.c`): stateless root shell over
-  `/dev/.sud`. Every app-side call is one `sh -c` fork with output in `/dev/dfOUT`.
-- **KernelSU LKM** (`kernel-ksu/`): su redirect + allowlist grant, throne/manager
-  fd-install, per-namespace apex CA injection, lazy module umount, SELinux-hide
-  hooks. Samsung KDP/RKP/DEFEX/CFI-safe (tracepoint + task_work only, no text patch).
-- **`mrun.sh`** (device: `/data/adb/ksu/mrun.sh`): Magisk-style module runner —
-  file-bind + dir-mirror mounts, CA staging, zygote/app-ns injection with verify,
-  `/system_ext/bin` su+busybox mirror for bare-`su` in every shell. During root
-  activation, real KernelSU `post-fs-data` and `service` stages run once; `mrun`
-  handles the port-specific mounts without duplicating those scripts.
-- **`ksudshim.sh`**: manager-compatible `ksud` CLI over mrun (install/enable/
-  disable/uninstall/action). `feature save` and friends are stubs (no daemon).
-- **Manager** (`manager/`, versionCode 32601): release build,
-  Flash console for uninstall, apex refresh on open, dead settings greyed out
-  (classic-su, kernel-umount locked on, SELinux-hide without reboot toast).
-- **Boot chain**: BOOT_COMPLETED posts a full-screen notification only — exploit
-  and load run *exclusively* with the activity window open (background load =
-  panic/Odin risk). Foreground guard aborts `insmod` if the window closes.
+1. Open DFRoot and run **Launch Root** while the activity remains in the foreground.
+2. Load KernelSU from the app.
+3. DFRoot initializes KernelSU module stages, applies its device-specific mounts, starts module services, then performs the configured framework soft reboot so Zygisk-capable modules can attach to the restarted Zygote.
 
-## Layout (self-contained clone)
+The foreground guard is intentional: background loading of the kernel modules can cause a device crash. Optional **START AT BOOT** posts a notification that opens the guarded activity; it does not load modules in the background. `mrun.sh` provides Magisk-style module installation and lifecycle support. Zygisk Next, Vector and COPG are optional modules and are not bundled with DFRoot.
 
-- `dfmod/` — stager sources.
-- `kernel-ksu/` — KernelSU LKM source. Build:
-  `S21_ROOT_OVERRIDE=/path/to/S21 bash scripts/build-kernelsu.sh KSU_VERSION=32601
-  KSU_EXPECTED_SIZE=0x2E8 KSU_EXPECTED_HASH=a86318b5… KSU_MANAGER_PACKAGE=me.weishu.kernelsu`
-- `manager/` — manager source (`KSU_MANAGER_VERSION_CODE=32601` release).
-- `scripts/` — kernel build wrappers (need sibling `toolchains/` +
-  `kernel-G991BXXSJHZC2` tree via `S21_ROOT_OVERRIDE`, plus `ANDROID_HOME` SDK/NDK).
-- `lkm/` — legacy DirtyFrag module sources.
-- External (NOT in repo): `toolchains/`, `kernel-G991BXXSJHZC2/`.
+## Build
 
-## Flow
+GitHub Actions provides two workflows:
 
-Manual: open the app → **Launch Root** (exploit, window stays open) →
-**Load KernelSU** when rooted. DFRoot then runs KernelSU's module stages,
-performs its port-specific mounts, starts module services, waits for Vector/COPG
-when installed, and restarts the Android framework so Zygisk can inject into the
-new Zygote and `system_server`.
+- **G998U app build** builds the debug APK after app changes.
+- **G998U kernel build** rebuilds KernelSU and DirtyFrag payloads against the HZB1 Samsung OSRC kernel, then packages the APK. Run it manually when kernel sources, kernel configuration or payload code changes.
 
-Autoboot: enable **START AT BOOT** in DFRoot, reboot, and let the boot activity
-run in the foreground. It runs the exploit and the same KernelSU/module startup
-flow. The root remains ephemeral; the exploit must run again after a full reboot.
-Background load never happens (panic/Odin guard).
+The kernel workflow expects the public `Kernel.tar.gz` source archive configured in the workflow. It checks the kernel release and packaged module vermagic before uploading artifacts. The APK from GitHub Actions uses that runner's debug signing key; Android may reject it as an update if the installed app was signed with a different debug key.
 
-For app-only changes, use the `g998u-app-build` GitHub Actions workflow. The
-`g998u-build` workflow also builds the kernel LKM and is only needed when those
-kernel artifacts change.
+For a local app build:
 
 ```sh
-./build.sh
-adb install -r dirtyfrag.apk
+./gradlew :app:assembleDebug --no-daemon
 ```
 
-## Known issues / limits
+For kernel payloads, run `bash g998u/ci/build.sh` in an Ubuntu environment with the required Android SDK and target kernel archive configured as `KERNEL_TARBALL_URL`.
 
-- Zygisk Next, Vector, and COPG are optional modules and are not bundled in the
-  DFRoot APK. Install them before activating KernelSU; DFRoot then initializes
-  their KernelSU stages and restarts the Android framework.
-- No `overlayfs` tricks anywhere near `/system` (hardlockup → watchdog reset).
+## Port lineage
+
+The exploit framework derives from [diabl0w/DFRoot](https://github.com/diabl0w/DFRoot). The Samsung 5.4 KernelSU compatibility layer originated in Galaxy S21 SM-G991B/HZC2 work; this repository adapts the device target and build to the G998U/HZB1 kernel. Internal identifiers such as `CONFIG_KSU_S21_54` remain compatibility names and do not define the supported handset.
+
+## Safety and limits
+
+- Root is temporary and is cleared by a full reboot.
+- Keep the DFRoot activity open while loading kernel payloads.
+- Do not use overlay mounts near `/system`; this device configuration has previously caused hard lockups.
+- Validate the DirtyFrag patch level before updating firmware. An update may close the exploit window.
+
+## License
+
+GPL-2.0. Use only on devices you own or are authorized to test.

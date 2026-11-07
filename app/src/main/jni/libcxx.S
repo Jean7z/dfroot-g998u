@@ -68,7 +68,7 @@ libcxx_start:
     stp x26, x27, [sp, #-16]!
     stp x28, x29, [sp, #-16]!
     str x30, [sp, #-16]!
-    stp x19, x20, [sp, #-16]!   // o1s: shell uses x19 (trace fd);
+    stp x19, x20, [sp, #-16]!   // G998U: shell uses x19 (trace fd);
                                 // x19-x28 are callee-saved (init's own!).
 
     // Detect root uid = 0
@@ -85,7 +85,7 @@ libcxx_start:
 
     // To avoid later call of hook to execute payload, create file as mutex.
     // Mutex: openat(AT_FDCWD, "/dev/df", O_CREAT|O_EXCL|O_CLOEXEC, 0)
-    // NOTE (o1s lesson, 2026-10-01): do NOT unlink stale markers here.
+    // NOTE (G998U lesson, 2026-10-01): do NOT unlink stale markers here.
     // /dev is devtmpfs (wiped every boot), so a present /dev/df always
     // means THIS boot already fired. Unlinking re-arms the hook on every
     // init log call -> insmod storm -> module-load deadlock -> hardlockup
@@ -122,7 +122,7 @@ libcxx_start:
     // seconds while init resumes immediately; shared stack would corrupt
     // both. Full fork copies init mm (costly but safe); vfork-style is
     // only safe for immediately-exec'ing children (sud_child pattern).
-    // Birth retry (o1s): clone fails fast (ENOMEM) under pressure;
+    // Birth retry (G998U): clone fails fast (ENOMEM) under pressure;
     // spin briefly (transient dips pass in microseconds). On giveup,
     // UNLINK the mutex (next init log refires fresh — harmless, no
     // worker/insmod was ever born, so no #127 storm possible).
@@ -331,7 +331,7 @@ sv_child:
     mov     x8, #94
     svc     0
 worker_cleanup:
-    // NOTE (o1s lesson, 2026-10-01, second edition): do NOT unlink the
+    // NOTE (G998U lesson, 2026-10-01, second edition): do NOT unlink the
     // mutex here. One shot per boot is the correct semantic (/dev is
     // devtmpfs: clean every boot; same-boot reruns need a reboot anyway).
     // Unlink-on-completion re-arms the hook on every init log call and
