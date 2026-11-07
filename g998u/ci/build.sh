@@ -174,12 +174,16 @@ for line in open(mapfile, errors="ignore"):
 print(f"System.map: {len(have)} symbols loaded")
 missing_core, missing_opt = [], []
 for eid, name in enum_ids:
-    (missing_core, missing_opt) = (missing_core, missing_opt + [f"{name} (opcional: KSU_{eid})"]) if f"KSU_{eid}" in optional_names else (missing_core + [name], missing_opt)
-print(f"symbols del resolver: {len(enum_ids)}; core missing: {len(missing_core)}; optional missing: {len(missing_opt)}")
+    if name not in have:
+        if f"KSU_{eid}" in optional_names:
+            missing_opt.append(f"{name} (KSU_{eid})")
+        else:
+            missing_core.append(name)
+print(f"Resolver symbols: {len(enum_ids)}; missing core: {len(missing_core)}; missing optional: {len(missing_opt)}")
 if missing_core:
-    print("CORE MISSING (abortan el insmod):", ",".join(missing_core))
+    print("CORE SYMBOLS NOT FOUND (diagnostic; external-module modpost is authoritative):", ",".join(missing_core))
 if missing_opt:
-    print("OPTIONAL MISSING (degradan con warning):", ",".join(missing_opt))
+    print("OPTIONAL SYMBOLS NOT FOUND:", ",".join(missing_opt))
 PY
 
 # ---------------------------------------------------------------- KernelSU LKM
